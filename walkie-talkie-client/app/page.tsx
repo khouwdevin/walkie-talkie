@@ -18,10 +18,6 @@ export default function Home() {
 
   const audioRef = useRef<HTMLAudioElement>(null)
 
-  const bufferRef = useRef<AudioBuffer>()
-  const bufferIndexRef = useRef<number>(0);
-  const bufferLengthRef = useRef<number>(0);
-
   const micRef = useRef<MediaRecorder>()
   const timeoutRef = useRef<NodeJS.Timeout>()
 
@@ -45,7 +41,7 @@ export default function Home() {
   const sendAudio = (audio: Blob) => {
     if (!ws) return
 
-    ws.emit("message", { audio })
+    ws.emit("message", { room: "abc", data: audio })
   }
 
   const error = (message: string) => {
@@ -57,28 +53,6 @@ export default function Home() {
     setMessage(message)
     setIsError(true)
   }
-
-  // const decodeAudio = (buffer: ArrayBuffer) => {
-  //   if (!bufferRef.current || !audioRef.current) return
-  //   const audioContext = new AudioContext()
-  //   const data = new Float32Array(buffer)
-
-  //   bufferRef.current.getChannelData(0).set(data, bufferIndexRef.current)
-  //   bufferLengthRef.current += data.length
-
-  //   if (audioRef.current.buffered.length < 16384) {
-  //     if (audioRef.current) {
-  //       audioRef.current.pause()
-  //     }
-  //     audioRef.current = audioContext.createBufferSource()
-  //     audioRef.current.buffer = audioBuffer
-  //     audioRef.current.src = audioContext.destination
-  //     audioRef.current.connect(audioContext.current.destination)
-  //     audioRef.current.play()
-  //   }
-
-  //     bufferIndexRef.current = (bufferIndexRef.current + data.length) % 16384;
-  // }
 
   useEffect(() => {
     if (!ws || !micRef.current) return
@@ -100,6 +74,8 @@ export default function Home() {
     ws.on("disconnect", () => error("Disconnect"))
 
     ws.on("connect", () => {
+      ws.emit("joinRoom", "abc")
+
       setIsConnected(true)
       setIsLoading(false)
 
@@ -107,16 +83,34 @@ export default function Home() {
 
       timeoutRef.current = setTimeout(() => {
         setMessage("connected")
-      }, 2000)
+      }, 500)
     })
 
     ws.on("message", (data) => {
       console.log(data)
     })
 
-    ws.on("chat", (data) => {
+    ws.on("chat", async (data) => {
+      if (!audioRef.current) return
       if (data.user === ws.id) return
-      console.log(data.message.audio)
+
+      try {
+        const audioContext = new AudioContext()
+
+        const buffer = await audioContext.decodeAudioData(data.message)
+
+        const destination = audioContext.createMediaStreamDestination()
+
+        const source = audioContext.createBufferSource()
+        source.buffer = buffer
+        source.connect(destination)
+        source.start()
+
+        const src = destination.stream
+
+        audioRef.current.srcObject = src
+        audioRef.current.play()
+      } catch {}
     })
 
     navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
@@ -132,8 +126,6 @@ export default function Home() {
   useEffect(() => {
     const wss = io("http://localhost:3001", { reconnection: false })
     setWs(wss)
-
-    bufferRef.current = new AudioBuffer({ length: 16384, numberOfChannels: 1, sampleRate: 44100 }) 
 
     return () => {
       if (ws) ws.close()
