@@ -16,8 +16,6 @@ export default function Home() {
 
   const [message, setMessage] = useState<string>("Connecting...")
 
-  const audioRef = useRef<HTMLAudioElement>(null)
-
   const micRef = useRef<MediaRecorder>()
   const timeoutRef = useRef<NodeJS.Timeout>()
 
@@ -41,7 +39,7 @@ export default function Home() {
   const sendAudio = (audio: Blob) => {
     if (!ws) return
 
-    ws.emit("message", { room: "abc", data: audio })
+    ws.emit("message", { room: "walkie-talkie", data: audio })
   }
 
   const error = (message: string) => {
@@ -58,7 +56,7 @@ export default function Home() {
     if (!ws || !micRef.current) return
 
     if (isActive) {
-      micRef.current.start(1)
+      micRef.current.start()
     }
     else {
       micRef.current.stop()
@@ -74,7 +72,7 @@ export default function Home() {
     ws.on("disconnect", () => error("Disconnect"))
 
     ws.on("connect", () => {
-      ws.emit("joinRoom", "abc")
+      ws.emit("joinRoom", "walkie-talkie")
 
       setIsConnected(true)
       setIsLoading(false)
@@ -91,25 +89,18 @@ export default function Home() {
     })
 
     ws.on("chat", async (data) => {
-      if (!audioRef.current) return
       if (data.user === ws.id) return
 
       try {
+        const arrayBuffer = data.message as ArrayBuffer
         const audioContext = new AudioContext()
 
-        const buffer = await audioContext.decodeAudioData(data.message)
-
-        const destination = audioContext.createMediaStreamDestination()
+        const buffer = await audioContext.decodeAudioData(arrayBuffer)
 
         const source = audioContext.createBufferSource()
         source.buffer = buffer
-        source.connect(destination)
-        source.start()
-
-        const src = destination.stream
-
-        audioRef.current.srcObject = src
-        audioRef.current.play()
+        source.connect(audioContext.destination)
+        source.start(0)
       } catch {}
     })
 
@@ -134,8 +125,6 @@ export default function Home() {
 
   return (
     <>
-      <audio ref={audioRef} style={{ display: "none" }}/>
-
       <Center height="100vh">
         <Stack alignItems="center">
           <Box>

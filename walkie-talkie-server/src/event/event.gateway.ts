@@ -6,7 +6,7 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { IMessage } from './event.interface';
+import { IMessage } from './event';
 
 @WebSocketGateway({ cors: { origins: '*' } })
 export class EventGateway {
