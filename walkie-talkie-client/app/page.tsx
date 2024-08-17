@@ -92,25 +92,32 @@ export default function Home() {
       if (data.user === ws.id) return
 
       try {
-        const arrayBuffer = data.message as ArrayBuffer
         const audioContext = new AudioContext()
+        const arrayBuffer = data.message as ArrayBuffer
 
         const buffer = await audioContext.decodeAudioData(arrayBuffer)
-
+        
         const source = audioContext.createBufferSource()
+
         source.buffer = buffer
         source.connect(audioContext.destination)
         source.start()
       } catch {}
     })
 
-    navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-      micRef.current = new MediaRecorder(stream, { mimeType: "audio/webm; codecs: opus", audioBitsPerSecond: 1280000 });
-      micRef.current.addEventListener("dataavailable", (event) => sendAudio(event.data))
+    navigator.mediaDevices.getUserMedia({ 
+      audio: { 
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 48000
+      }}).then((stream) => {
+        micRef.current = new MediaRecorder(stream, { mimeType: "audio/webm; codecs: opus", audioBitsPerSecond: 1280000 })
+        micRef.current.addEventListener("dataavailable", (event) => sendAudio(event.data))
     })
 
     return () => {
-      if (micRef.current) micRef.current.removeEventListener("dataavailable", (event) => sendAudio(event.data))
+      if (micRef.current) 
+        micRef.current.removeEventListener("dataavailable", (event) => sendAudio(event.data))
     }
   }, [ws])
 
