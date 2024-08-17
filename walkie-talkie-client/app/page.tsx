@@ -67,7 +67,7 @@ export default function Home() {
   useEffect(() => {
     if (!ws) return
 
-    ws.on("connect_error", () => error("Connection error"))
+    ws.on("connect_error", (e) => error(e.message))
     ws.on("error", () => error("Error"))
     ws.on("disconnect", () => error("Disconnect"))
 
@@ -100,12 +100,12 @@ export default function Home() {
         const source = audioContext.createBufferSource()
         source.buffer = buffer
         source.connect(audioContext.destination)
-        source.start(0)
+        source.start()
       } catch {}
     })
 
     navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-      micRef.current = new MediaRecorder(stream);
+      micRef.current = new MediaRecorder(stream, { mimeType: "audio/webm; codecs: opus", audioBitsPerSecond: 1280000 });
       micRef.current.addEventListener("dataavailable", (event) => sendAudio(event.data))
     })
 
@@ -115,7 +115,7 @@ export default function Home() {
   }, [ws])
 
   useEffect(() => {
-    const wss = io("http://localhost:3001", { reconnection: false })
+    const wss = io("https://192.168.0.138:3001", { reconnection: false, transports: ["websocket"] })
     setWs(wss)
 
     return () => {
