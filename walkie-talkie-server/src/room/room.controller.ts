@@ -10,9 +10,13 @@ export class RoomController {
     const roomName = 'walkie-talkie';
     const participantName = username;
 
-    const at = new AccessToken('LIVEKIT-API-KEY', 'LIVEKIT-API-SECRET', {
-      identity: participantName,
-    });
+    const at = new AccessToken(
+      'API2F2dpVb53mMx',
+      '0QAgOa505kfQLhnBFZfM5U3Q2CL33c3ROFONFyyFKwU',
+      {
+        identity: participantName,
+      },
+    );
     at.addGrant({ roomJoin: true, room: roomName });
 
     const token = await at.toJwt();

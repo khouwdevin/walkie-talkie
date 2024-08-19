@@ -127,7 +127,7 @@ export default function Home() {
             }
         })
         setRoom(currentRoom)
-        await currentRoom.connect("ws://192.168.0.138:7880", token)
+        await currentRoom.connect("ws://192.168.0.138:7881", token)
 
         await currentRoom.localParticipant.setMicrophoneEnabled(false)
     }
