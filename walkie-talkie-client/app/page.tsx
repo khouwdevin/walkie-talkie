@@ -19,6 +19,9 @@ export default function Home() {
   const micRef = useRef<MediaRecorder>()
   const timeoutRef = useRef<NodeJS.Timeout>()
 
+  const sourceBuffer = useRef<SourceBuffer>()
+  const audioRef = useRef<HTMLAudioElement>(null)
+
   const setMic = (status: boolean) => {
     if (isError) return
 
@@ -36,12 +39,6 @@ export default function Home() {
     setMessage("Connecting...")
   }
 
-  const sendAudio = (audio: Blob) => {
-    if (!ws) return
-
-    ws.emit("message", { room: "walkie-talkie", data: audio })
-  }
-
   const error = (message: string) => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
     
@@ -56,7 +53,7 @@ export default function Home() {
     if (!ws || !micRef.current) return
 
     if (isActive) {
-      micRef.current.start()
+      micRef.current.start(500)
     }
     else {
       micRef.current.stop()
@@ -89,35 +86,50 @@ export default function Home() {
     })
 
     ws.on("chat", async (data) => {
+      if (!sourceBuffer.current) return
       if (data.user === ws.id) return
 
       try {
-        const audioContext = new AudioContext()
         const arrayBuffer = data.message as ArrayBuffer
-
-        const buffer = await audioContext.decodeAudioData(arrayBuffer)
-        
-        const source = audioContext.createBufferSource()
-
-        source.buffer = buffer
-        source.connect(audioContext.destination)
-        source.start()
+        sourceBuffer.current.appendBuffer(arrayBuffer)
       } catch {}
     })
+  }, [ws, sourceBuffer.current])
 
+  useEffect(() => {
+    if (!audioRef.current) return
+
+    const mediaSource = new MediaSource()
+
+    audioRef.current.src = URL.createObjectURL(mediaSource)
+
+    mediaSource.onsourceopen = () => {
+      sourceBuffer.current = mediaSource.addSourceBuffer("audio/webm; codecs=opus")
+    }
+  }, [audioRef.current])
+
+  useEffect(() => {
     navigator.mediaDevices.getUserMedia({ 
       audio: { 
         echoCancellation: true,
         noiseSuppression: true,
         sampleRate: 48000
-      }}).then((stream) => {
-        micRef.current = new MediaRecorder(stream, { mimeType: "audio/webm; codecs: opus", audioBitsPerSecond: 1280000 })
-        micRef.current.addEventListener("dataavailable", (event) => sendAudio(event.data))
+    }}).then((stream) => {
+      micRef.current = new MediaRecorder(stream, { mimeType: "audio/webm; codecs: opus" })
+      micRef.current.addEventListener("dataavailable", (event) => {
+        if (!ws) return
+
+        ws.emit("message", { room: "walkie-talkie", data: event.data })
+      })
     })
 
     return () => {
       if (micRef.current) 
-        micRef.current.removeEventListener("dataavailable", (event) => sendAudio(event.data))
+        micRef.current.addEventListener("dataavailable", (event) => {
+          if (!ws) return
+  
+          ws.emit("message", { room: "walkie-talkie", data: event.data })
+        })
     }
   }, [ws])
 
@@ -132,6 +144,8 @@ export default function Home() {
 
   return (
     <>
+      <audio autoPlay style={{ display: "none" }} ref={audioRef}/>
+
       <Center height="100vh">
         <Stack alignItems="center">
           <Box>
