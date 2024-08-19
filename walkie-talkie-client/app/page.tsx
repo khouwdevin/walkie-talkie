@@ -1,65 +1,74 @@
 'use client'
 
 import { Box, Button, Center, Icon, IconButton, Spinner, Stack, Text } from "@chakra-ui/react";
+import { Room, RoomEvent } from "livekit-client";
 import { useEffect, useRef, useState } from "react";
 import { FaMicrophone, FaMicrophoneSlash } from "react-icons/fa";
 import { MdOutlineSignalWifiStatusbar4Bar, MdOutlineSignalWifiStatusbarNull } from "react-icons/md";
 import { io, Socket } from "socket.io-client";
 
 export default function Home() {
-  const [ws, setWs] = useState<Socket | null>(null)
+  const [status, setStatus] = useState({
+    isConnected: false,
+    isLoading: true,
+    isError: false,
+    message: "connecting..."
+  })
 
-  const [isActive, setIsActive] = useState<boolean>(false)
-  const [isConnected, setIsConnected] = useState<boolean>(false)
-  const [isLoading, setIsLoading] = useState<boolean>(true)
-  const [isError, setIsError] = useState<boolean>(false)
+  const [room, setRoom] = useState<Room>()
+  const [mic, setMic] = useState<boolean>(false)
 
-  const [message, setMessage] = useState<string>("Connecting...")
+  const [ws, setWs] = useState<Socket>()
 
-  const micRef = useRef<MediaRecorder>()
-  const timeoutRef = useRef<NodeJS.Timeout>()
-
-  const sourceBuffer = useRef<SourceBuffer>()
   const audioRef = useRef<HTMLAudioElement>(null)
-
-  const setMic = (status: boolean) => {
-    if (isError) return
-
-    setIsActive(status)
-  }
 
   const reconnectWs = () => {
     if (!ws) return
 
     ws.connect()
 
-    setIsLoading(true)
-    setIsError(false)
-    setIsConnected(false)
-    setMessage("Connecting...")
+    setStatus({
+        isLoading: true,
+        isError: false,
+        isConnected: false,
+        message: "connecting..."
+    })
   }
 
-  const error = (message: string) => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current)
-    
-    setIsConnected(false)
-    setIsLoading(false)
-
-    setMessage(message)
-    setIsError(true)
+  const error = (message: string) => {    
+    setStatus({
+        isLoading: false,
+        isError: true,
+        isConnected: false,
+        message: message
+    })
   }
 
   useEffect(() => {
-    if (!ws || !micRef.current) return
+    if (!room || !audioRef.current) return
 
-    if (isActive) {
-      micRef.current.start(500)
-    }
-    else {
-      micRef.current.stop()
-    }
-    
-  }, [isActive])
+    room.on(RoomEvent.Connected, () => {
+        setStatus((prev) => ({ 
+            ...prev, 
+            isLoading: false, 
+            isConnected: true, 
+            message: "connected to walkie-talkie room" 
+        }))
+
+        setTimeout(() => {
+            setStatus((prev) => ({ 
+                ...prev, 
+                message: "connected" 
+            }))
+        }, 1000)
+    })
+
+    room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+        if (!audioRef.current) return
+        
+        track.attach(audioRef.current)
+    })
+  }, [room])
 
   useEffect(() => {
     if (!ws) return
@@ -69,73 +78,66 @@ export default function Home() {
     ws.on("disconnect", () => error("Disconnect"))
 
     ws.on("connect", () => {
-      ws.emit("joinRoom", "walkie-talkie")
+        ws.emit("joinRoom", "walkie-talkie")
 
-      setIsConnected(true)
-      setIsLoading(false)
-
-      setMessage("Connected to speaker")
-
-      timeoutRef.current = setTimeout(() => {
-        setMessage("connected")
-      }, 500)
+        setStatus((prev) => ({ 
+            ...prev, 
+            isLoading: true, 
+            isConnected: true, 
+            message: "connecting to room" 
+        }))
     })
-
-    ws.on("message", (data) => {
-      console.log(data)
-    })
-
-    ws.on("chat", async (data) => {
-      if (!sourceBuffer.current) return
-      if (data.user === ws.id) return
-
-      try {
-        const arrayBuffer = data.message as ArrayBuffer
-        sourceBuffer.current.appendBuffer(arrayBuffer)
-      } catch {}
-    })
-  }, [ws, sourceBuffer.current])
-
-  useEffect(() => {
-    if (!audioRef.current) return
-
-    const mediaSource = new MediaSource()
-
-    audioRef.current.src = URL.createObjectURL(mediaSource)
-
-    mediaSource.onsourceopen = () => {
-      sourceBuffer.current = mediaSource.addSourceBuffer("audio/webm; codecs=opus")
-    }
-  }, [audioRef.current])
-
-  useEffect(() => {
-    navigator.mediaDevices.getUserMedia({ 
-      audio: { 
-        echoCancellation: true,
-        noiseSuppression: true,
-        sampleRate: 48000
-    }}).then((stream) => {
-      micRef.current = new MediaRecorder(stream, { mimeType: "audio/webm; codecs: opus" })
-      micRef.current.addEventListener("dataavailable", (event) => {
-        if (!ws) return
-
-        ws.emit("message", { room: "walkie-talkie", data: event.data })
-      })
-    })
-
-    return () => {
-      if (micRef.current) 
-        micRef.current.addEventListener("dataavailable", (event) => {
-          if (!ws) return
-  
-          ws.emit("message", { room: "walkie-talkie", data: event.data })
-        })
-    }
   }, [ws])
 
   useEffect(() => {
-    const wss = io("https://192.168.0.138:3001", { reconnection: false, transports: ["websocket"] })
-    setWs(wss)
+    const enableMic = async () => {
+        if (!room) return
+        const currentMicState = mic
+
+        if (currentMicState) {
+            await room.localParticipant.setMicrophoneEnabled(false)
+        }
+        else {
+            await room.localParticipant.setMicrophoneEnabled(true)
+        }
+    }
+
+    enableMic()
+  }, [mic, room])
+
+  useEffect(() => {
+    const initiateRoom = async () => {
+        if (!ws) return
+
+        const username = location.hostname === "localhost" ? "host" : ws.id
+        const res = await fetch(`http://192.168.0.138:3001/room/${username}`)
+        const { token } = await res.json()
+
+        const currentRoom = new Room({
+            audioCaptureDefaults: {
+                autoGainControl: true,
+                deviceId: '',
+                echoCancellation: true,
+                noiseSuppression: true,
+            },
+            publishDefaults: {
+                audioPreset: {
+                    maxBitrate: 20_000
+                }
+            }
+        })
+        setRoom(currentRoom)
+        await currentRoom.connect("ws://192.168.0.138:7880", token)
+
+        await currentRoom.localParticipant.setMicrophoneEnabled(false)
+    }
+    
+    initiateRoom()
+  }, [ws])
+
+  useEffect(() => {
+    const connection = io("ws://192.168.0.138:3001", { reconnection: false, transports: ["websocket"] })
+    setWs(connection)
 
     return () => {
       if (ws) ws.close()
@@ -144,37 +146,37 @@ export default function Home() {
 
   return (
     <>
-      <audio autoPlay style={{ display: "none" }} ref={audioRef}/>
+        <audio autoPlay style={{ display: "none" }} ref={audioRef}/>
 
-      <Center height="100vh">
-        <Stack alignItems="center">
-          <Box>
-            <IconButton aria-label="mic" icon={isActive ? <FaMicrophone/> : <FaMicrophoneSlash/>} 
-              borderRadius="full" boxSize={["250px", "300px"]} fontSize={["80px", "100px"]} _hover={{ boxShadow: "none" }}
-              onPointerDown={() => setMic(true)} onPointerUp={() => setMic(false)} isDisabled={isError || isLoading}/>
-          </Box>
+        <Center height="100vh">
+            <Stack alignItems="center">
+            <Box>
+                <IconButton aria-label="mic" icon={mic ? <FaMicrophone/> : <FaMicrophoneSlash/>} 
+                borderRadius="full" boxSize={["250px", "300px"]} fontSize={["80px", "100px"]} _hover={{ boxShadow: "none" }}
+                onPointerDown={() => setMic(true)} onPointerUp={() => setMic(false)} isDisabled={status.isError || status.isLoading}/>
+            </Box>
 
-          <Stack pt={4} direction="row" alignItems="center" gap={4}>
-            { 
-              isLoading ?
-                <Spinner size="lg"/>              
-              :
-              (
-                (isConnected) ? 
-                <Icon aria-label="connected" as={MdOutlineSignalWifiStatusbar4Bar} fontSize={["30px", "40px"]}/> 
-                : 
-                <Icon aria-label="not connected" as={MdOutlineSignalWifiStatusbarNull} fontSize={["30px", "40px"]}/>
-              )
-            }
+            <Stack pt={4} direction="row" alignItems="center" gap={4}>
+                { 
+                status.isLoading ?
+                    <Spinner size="lg"/>              
+                :
+                (
+                    (status.isConnected) ? 
+                    <Icon aria-label="connected" as={MdOutlineSignalWifiStatusbar4Bar} fontSize={["30px", "40px"]}/> 
+                    : 
+                    <Icon aria-label="not connected" as={MdOutlineSignalWifiStatusbarNull} fontSize={["30px", "40px"]}/>
+                )
+                }
 
-            <Text fontWeight="bold" fontSize={[25, 35]}>{message}</Text>
-          </Stack>
+                <Text fontWeight="bold" fontSize={[25, 35]}>{status.message}</Text>
+            </Stack>
 
-          <Box>
-            {isError && <Button size={["md", "lg"]} onClick={reconnectWs}>Reconnect</Button>}
-          </Box>
-        </Stack>
-      </Center>
+            <Box>
+                {status.isError && <Button size={["md", "lg"]} onClick={reconnectWs}>Reconnect</Button>}
+            </Box>
+            </Stack>
+        </Center>
     </>
   )
 }
