@@ -140,37 +140,6 @@ export default function Home() {
         getRoom()
     }, [])
 
-    useEffect(() => {
-        if (!ws) return
-
-        ws.on("connect_error", (e) => error(e.message))
-        ws.on("error", () => error("error"))
-        ws.on("disconnect", () => error("disconnected"))
-
-        ws.on("connect", () => {
-            ws.emit("joinRoom", "walkie-talkie")
-
-            setStatus((prev) => ({ 
-                ...prev, 
-                isLoading: true, 
-                isConnected: true, 
-                message: "connecting to room" 
-            }))
-
-            if (room === undefined)
-                initiateRoom()
-        })
-    }, [ws])
-
-    useEffect(() => {
-        const connection = io("https://192.168.0.138:3001", { reconnection: false, transports: ["websocket"] })
-        setWs(connection)
-
-        return () => {
-            if (ws) ws.close()
-        }
-    }, [])
-    
     return (
         <>
             <audio style={{ display: "none" }} ref={audioRef}/>
