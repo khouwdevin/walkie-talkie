@@ -1,5 +1,4 @@
 import { Controller, Get, Param } from '@nestjs/common';
-import { AccessToken } from 'livekit-server-sdk';
 
 @Controller()
 export class RoomController {
@@ -7,20 +6,22 @@ export class RoomController {
 
   @Get('room/:username')
   async getToken(@Param('username') username: string) {
-    const roomName = 'walkie-talkie';
-    const participantName = username;
+    try {
+      const { AccessToken } = await import('livekit-server-sdk');
 
-    const at = new AccessToken(
-      'API2F2dpVb53mMx',
-      '0QAgOa505kfQLhnBFZfM5U3Q2CL33c3ROFONFyyFKwU',
-      {
+      const roomName = 'walkie-talkie';
+      const participantName = username;
+
+      const at = new AccessToken('', '', {
         identity: participantName,
-      },
-    );
-    at.addGrant({ roomJoin: true, room: roomName });
+      });
+      at.addGrant({ roomJoin: true, room: roomName });
 
-    const token = await at.toJwt();
+      const token = await at.toJwt();
 
-    return { token };
+      return { token };
+    } catch (e) {
+      return { error: e };
+    }
   }
 }
