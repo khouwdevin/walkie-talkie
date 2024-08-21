@@ -1,14 +1,12 @@
 'use client'
 
-import { Box, Button, Center, Icon, IconButton, Spinner, Stack, Text } from "@chakra-ui/react";
+import { Box, Center, Icon, IconButton, Spinner, Stack, Text } from "@chakra-ui/react";
 import { Room, RoomEvent } from "livekit-client";
 import { useEffect, useRef, useState } from "react";
 import { FaMicrophone, FaMicrophoneSlash } from "react-icons/fa";
 import { MdOutlineSignalWifiStatusbar4Bar, MdOutlineSignalWifiStatusbarNull } from "react-icons/md";
 
 export default function Home() {
-    const [toConnect, setToConnect] = useState<boolean>(true)
-
     const [status, setStatus] = useState({
         isConnected: false,
         isLoading: true,
@@ -43,8 +41,6 @@ export default function Home() {
 
     const getRoom = async () => {
         try {
-            setToConnect(false)
-
             const res = await fetch("/api/room", {
                 method: "POST"
             })
@@ -53,7 +49,7 @@ export default function Home() {
             const currentRoom = new Room({
                 audioCaptureDefaults: {
                     autoGainControl: true,
-                    deviceId: '',
+                    deviceId: "",
                     echoCancellation: true,
                     noiseSuppression: true,
                 },
@@ -67,6 +63,8 @@ export default function Home() {
             setRoom(currentRoom)
 
             await currentRoom.connect(process.env.LIVEKIT_URL as string, token)
+
+            await currentRoom.localParticipant.setMicrophoneEnabled(true)
             await currentRoom.localParticipant.setMicrophoneEnabled(false)
         } catch {
             error("room error")
@@ -139,43 +137,38 @@ export default function Home() {
         })
     }, [room])
 
+    useEffect(() => {
+        getRoom()
+    }, [])
+
     return (
         <>
             <audio style={{ display: "none" }} ref={audioRef}/>
 
             <Center height="100vh">
-                {
-                    toConnect ?
+                <Stack alignItems="center">
                     <Box>
-                        <Button size="lg" _hover={{ boxShadow: "none" }} onClick={getRoom}>
-                            Connect
-                        </Button>
+                        <IconButton aria-label="mic" icon={mic ? <FaMicrophone/> : <FaMicrophoneSlash/>} 
+                        borderRadius="full" boxSize={["250px", "300px"]} fontSize={["80px", "100px"]} _hover={{ boxShadow: "none" }}
+                        onClick={enableMic} isDisabled={status.isError || status.isLoading}/>
                     </Box>
-                    :
-                    <Stack alignItems="center">
-                        <Box>
-                            <IconButton aria-label="mic" icon={mic ? <FaMicrophone/> : <FaMicrophoneSlash/>} 
-                            borderRadius="full" boxSize={["250px", "300px"]} fontSize={["80px", "100px"]} _hover={{ boxShadow: "none" }}
-                            onClick={enableMic} isDisabled={status.isError || status.isLoading}/>
-                        </Box>
 
-                        <Stack pt={4} direction="row" alignItems="center" gap={4}>
-                            { 
-                            status.isLoading ?
-                                <Spinner size="lg"/>              
-                            :
-                            (
-                                (status.isConnected) ? 
-                                <Icon aria-label="connected" as={MdOutlineSignalWifiStatusbar4Bar} fontSize={["30px", "40px"]}/> 
-                                : 
-                                <Icon aria-label="not connected" as={MdOutlineSignalWifiStatusbarNull} fontSize={["30px", "40px"]}/>
-                            )
-                            }
+                    <Stack pt={4} direction="row" alignItems="center" gap={4}>
+                        { 
+                        status.isLoading ?
+                            <Spinner size="lg"/>              
+                        :
+                        (
+                            (status.isConnected) ? 
+                            <Icon aria-label="connected" as={MdOutlineSignalWifiStatusbar4Bar} fontSize={["30px", "40px"]}/> 
+                            : 
+                            <Icon aria-label="not connected" as={MdOutlineSignalWifiStatusbarNull} fontSize={["30px", "40px"]}/>
+                        )
+                        }
 
-                            <Text fontWeight="bold" fontSize={[25, 35]}>{status.message}</Text>
-                        </Stack>
+                        <Text fontWeight="bold" fontSize={[25, 35]}>{status.message}</Text>
                     </Stack>
-                }
+                </Stack>
             </Center>
         </>
     )
