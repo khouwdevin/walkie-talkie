@@ -1,27 +1,12 @@
 import { Controller, Get, Param } from '@nestjs/common';
+import { RoomService } from './room.service';
 
 @Controller()
 export class RoomController {
-  constructor() {}
+  constructor(private readonly roomService: RoomService) {}
 
   @Get('room/:username')
   async getToken(@Param('username') username: string) {
-    try {
-      const { AccessToken } = await import('livekit-server-sdk');
-
-      const roomName = 'walkie-talkie';
-      const participantName = username;
-
-      const at = new AccessToken('', '', {
-        identity: participantName,
-      });
-      at.addGrant({ roomJoin: true, room: roomName });
-
-      const token = await at.toJwt();
-
-      return { token };
-    } catch (e) {
-      return { error: e };
-    }
+    return this.roomService.getToken(username);
   }
 }
